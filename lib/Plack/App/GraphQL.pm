@@ -117,7 +117,6 @@ sub matches_path {
 
 sub allow_graphql_ui {
   my ($self, $req) = @_;
-
   return 1  if $self->ui
             and (($req->env->{HTTP_ACCEPT}||'') =~ /^text\/html\b/)
             and (!defined($req->body_parameters->{'raw'}));

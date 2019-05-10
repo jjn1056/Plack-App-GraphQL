@@ -18,7 +18,11 @@ Plack::App::GraphQL::Context - The Default Context
 
 =head1 DESCRIPTION
  
-    TBD
+This is a per request context that is passed to your resolvers in addition
+to the root or local value.  Useful if you need to inspect some aspect of
+the request.  Subclass or roll your own as needed.  For example you could
+have a custom context with a user object for applications with user login
+and security.
  
 =head1 AUTHOR
  
