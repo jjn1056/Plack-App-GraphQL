@@ -9,17 +9,52 @@ extends 'Plack::Component';
 
 our $VERSION = '0.001';
 
+has convert => (
+  is => 'ro',
+  isa => sub { ref($_[0]) ? 1:0 },
+  predicate => 'has_convert',
+  coerce => sub {
+    if(ref($_[0]) eq 'ARRAY') {
+      my ($class_proto, @args) = @{$_[0]};
+      return normalize_convert_class($class_proto)->to_graphql(@args);
+    } else {
+      return $_[0]; # assume its a hashref already.
+    }
+  },
+);
+
+  sub normalize_convert_class {
+    my $class_proto = shift;
+    my $class = $class_proto =~m/^\+(.+)$/ ?
+      $1 :
+      "GraphQL::Plugin::Convert::$class_proto";
+    return Plack::Util::load_class($class);
+  }
+
 has schema => (
   is => 'ro',
+  lazy => 1,
   required => 1,
+  builder => '_build_schema',
   coerce => sub {
     my $schema_proto = shift;
     return ref($schema_proto) ?
       $schema_proto :
-      Plack::Util::load_class("GraphQL::Schema")
-       ->from_doc($schema_proto); 
+      coerce_schema($schema_proto);
   }
 );
+
+  sub coerce_schema {
+    return Plack::Util::load_class("GraphQL::Schema")
+       ->from_doc(shift); 
+  }
+
+  sub _build_schema {
+    my $self = shift;
+    return $self->has_convert ? 
+      $self->convert->{schema} :
+      undef;
+  }
 
 has path => (
   is => 'ro',
@@ -69,7 +104,12 @@ has root_value => (
   builder => '_build_root_value',
 );
 
-  sub _build_root_value { return shift }
+  sub _build_root_value {
+    my $self = shift;
+    return $self->has_convert ? 
+      $self->convert->{root_value} :
+      undef;
+  }
 
 has ui => (
   is => 'ro',
@@ -83,8 +123,16 @@ has ui => (
 has resolver => (
   is => 'ro',
   required => 0,
-  predicate => 'has_resolver',
+  lazy => 1,
+  builder => '_build_resolver',
 );
+
+  sub _build_resolver {
+    my $self = shift;
+    return $self->has_convert ? 
+      $self->convert->{resolver} :
+      undef;
+  }
 
 has json_encoder => (
   is => 'ro',
@@ -115,7 +163,7 @@ sub matches_path {
   return $req->env->{PATH_INFO} eq $self->path ? 1:0;
 }
 
-sub allow_graphql_ui {
+sub accepts_graphql_ui {
   my ($self, $req) = @_;
   return 1  if $self->ui
             and (($req->env->{HTTP_ACCEPT}||'') =~ /^text\/html\b/)
@@ -127,11 +175,9 @@ sub call {
   my ($self, $env) = @_;
   my $req = Plack::Request->new($env);
   if($self->matches_path($req)) {
-    if($self->allow_graphql_ui($req)) {
-      warn "Returning UI";
+    if($self->accepts_graphql_ui($req)) {
       return $self->respond_graphql_ui($req);
     } else {
-      warn "Doing real GraphQL";
       return $self->respond_graphql($req);
     }
   } else {
