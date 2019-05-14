@@ -34,6 +34,6 @@ return my $app = Plack::App::GraphQL
   ->new(
       schema => $schema, 
       root_value => \%root_value, 
-      ui=>1,
-      path=>'/graphql')
+      graphiql=>1,
+      endpoint=>'/graphql')
   ->to_app;

@@ -56,14 +56,14 @@ has schema => (
       undef;
   }
 
-has path => (
+has endpoint => (
   is => 'ro',
   required => 1,
-  builder => 'DEFAULT_PATH',
+  builder => 'DEFAULT_ENDPOINT',
 );
 
-  our $DEFAULT_PATH = '/';
-  sub DEFAULT_PATH { $DEFAULT_PATH }
+  our $DEFAULT_ENDPOINT = '/';
+  sub DEFAULT_ENDPOINT { $DEFAULT_ENDPOINT }
 
 has context_class => (
   is => 'ro',
@@ -111,14 +111,14 @@ has root_value => (
       undef;
   }
 
-has ui => (
+has graphiql => (
   is => 'ro',
   required => 1,
-  builder => 'DEFAULT_UI',
+  builder => 'DEFAULT_GRAPHIQL',
 );
 
-  our $DEFAULT_UI = 0;
-  sub DEFAULT_UI { $DEFAULT_UI }
+  our $DEFAULT_GRAPHIQL = 0;
+  sub DEFAULT_GRAPHIQL { $DEFAULT_GRAPHIQL }
 
 has resolver => (
   is => 'ro',
@@ -158,14 +158,14 @@ sub build_context {
   );
 }
 
-sub matches_path {
+sub matches_endpoint {
   my ($self, $req) = @_;
-  return $req->env->{PATH_INFO} eq $self->path ? 1:0;
+  return $req->env->{PATH_INFO} eq $self->endpoint ? 1:0;
 }
 
-sub accepts_graphql_ui {
+sub accepts_graphiql {
   my ($self, $req) = @_;
-  return 1  if $self->ui
+  return 1  if $self->graphiql
             and (($req->env->{HTTP_ACCEPT}||'') =~ /^text\/html\b/)
             and (!defined($req->body_parameters->{'raw'}));
   return 0;
@@ -174,9 +174,9 @@ sub accepts_graphql_ui {
 sub call {
   my ($self, $env) = @_;
   my $req = Plack::Request->new($env);
-  if($self->matches_path($req)) {
-    if($self->accepts_graphql_ui($req)) {
-      return $self->respond_graphql_ui($req);
+  if($self->matches_endpoint($req)) {
+    if($self->accepts_graphiql($req)) {
+      return $self->respond_graphiql($req);
     } else {
       return $self->respond_graphql($req);
     }
@@ -185,7 +185,7 @@ sub call {
   }
 }
 
-sub respond_graphql_ui {
+sub respond_graphiql {
   my ($self, $req) = @_;
   my $body = $self->ui_template->process($req);
   return $self->graphql_ui_psgi($body)
@@ -212,21 +212,65 @@ sub respond_graphql {
 
 sub prepare_results {
   my ($self, $req) = @_;
+  
+  my $schema = $self->prepare_schema;
   my $root_value = $self->prepare_root_value($req);
   my $resolver = $self->prepare_resolver($req);
   my $context = $self->prepare_context($req);
   my $json_body = $self->prepare_body($req);
+  my $handler = $self->prepare_handler($req);
 
-  return my $results = GraphQL::Execution::execute(
-    $self->schema,
-    $json_body->{query},
+  return my $results = $handler->(
+    $self,
+    $schema,
+    $json_body,
     $root_value,
     $context,
-    $json_body->{variables},
-    $json_body->{operationName},
+    $resolver,
+    sub { $self->execute(@_) },
+  );
+}
+
+has handler => (
+  is => 'ro',
+  required => 1,
+  builder => '_build_handler',
+);
+
+  sub _build_handler {
+    return sub {
+      my ($self, $schema, $json_body, $root_value, $context, $resolver, $execute) = @_;
+      return my $results = $execute->(
+        $schema,
+        $json_body->{query},
+        $root_value,
+        $context,
+        $json_body->{variables},
+        $json_body->{operationName},
+        $resolver,
+      );
+    };
+  }
+
+sub prepare_handler {
+  my ($self, $req) = @_;
+  return $req->env->{'plack.graphql.handler'} ||= $self->handler;
+}
+
+sub execute {
+  my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver) = @_;
+  return my $results = GraphQL::Execution::execute(
+    $schema,
+    $query,
+    $root_value,
+    $context,
+    $variables,
+    $operation_name,
     $resolver,
   );
 }
+
+sub prepare_schema { shift->schema }
 
 sub prepare_root_value {
   my ($self, $req) = @_;
