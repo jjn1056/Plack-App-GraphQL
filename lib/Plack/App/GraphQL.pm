@@ -149,6 +149,27 @@ has json_encoder => (
   }
 );
 
+has handler => (
+  is => 'ro',
+  required => 1,
+  builder => '_build_handler',
+);
+
+  sub _build_handler {
+    return sub {
+      my ($self, $execute, $schema, $json_body, $root_value, $context, $resolver) = @_;
+      return my $results = $execute->(
+        $schema,
+        $json_body->{query},
+        $root_value,
+        $context,
+        $json_body->{variables},
+        $json_body->{operationName},
+        $resolver,
+      );
+    };
+  }
+
 sub build_context {
   my ($self, $req) = @_;
   my $context_class = $self->context_class;
@@ -213,7 +234,7 @@ sub respond_graphql {
 sub prepare_results {
   my ($self, $req) = @_;
   
-  my $schema = $self->prepare_schema;
+  my $schema = $self->prepare_schema($req);
   my $root_value = $self->prepare_root_value($req);
   my $resolver = $self->prepare_resolver($req);
   my $context = $self->prepare_context($req);
@@ -222,55 +243,19 @@ sub prepare_results {
 
   return my $results = $handler->(
     $self,
+    sub { $self->execute(@_) },
     $schema,
     $json_body,
     $root_value,
     $context,
     $resolver,
-    sub { $self->execute(@_) },
   );
 }
 
-has handler => (
-  is => 'ro',
-  required => 1,
-  builder => '_build_handler',
-);
-
-  sub _build_handler {
-    return sub {
-      my ($self, $schema, $json_body, $root_value, $context, $resolver, $execute) = @_;
-      return my $results = $execute->(
-        $schema,
-        $json_body->{query},
-        $root_value,
-        $context,
-        $json_body->{variables},
-        $json_body->{operationName},
-        $resolver,
-      );
-    };
-  }
-
-sub prepare_handler {
+sub prepare_schema { 
   my ($self, $req) = @_;
-  return $req->env->{'plack.graphql.handler'} ||= $self->handler;
+  return my $schema = $req->env->{'plack.graphql.schema'} ||= $self->schema;
 }
-
-sub execute {
-  my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver) = @_;
-  return my $results = GraphQL::Execution::execute(
-    $schema,
-    $query,
-    $root_value,
-    $context,
-    $variables,
-    $operation_name,
-    $resolver,
-  );
-}
-
-sub prepare_schema { shift->schema }
 
 sub prepare_root_value {
   my ($self, $req) = @_;
@@ -296,6 +281,25 @@ sub prepare_body {
   };
   return $json_body;
 }
+
+sub prepare_handler {
+  my ($self, $req) = @_;
+  return $req->env->{'plack.graphql.handler'} ||= $self->handler;
+}
+
+sub execute {
+  my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver) = @_;
+  return my $results = GraphQL::Execution::execute(
+    $schema,
+    $query,
+    $root_value,
+    $context,
+    $variables,
+    $operation_name,
+    $resolver,
+  );
+}
+
 
 sub graphql_psgi {
   my ($self, $results) = @_;
