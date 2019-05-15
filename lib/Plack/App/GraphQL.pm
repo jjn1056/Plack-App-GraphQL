@@ -378,19 +378,23 @@ or applications (See documentation below).
  
 Serve GraphQL with Plack.
 
-    TODO
+Please note this is an early access / no documentation release.  You should already
+be familiar with L<GraphQL>.  There's some examples in C</examples> but no real test
+cases.  If you are not confortable using this based on reading the source code and
+can't accept the possibility that the underlying code might change (although I expect
+the configuration options are pretty set now) then you shouldn't use this. I recommend
+looking at official plugins for Dancer and Mojolicious: L<Dancer2::Plugin::GraphQL>,
+L<Mojolicious::Plugin::GraphQL>.
 
-    -- examples
-    -- make sure people know how to override per request root value if they 
-        really need that.
+This currently doesnt support an asychronous response.  Patchs and discussion welcomed!
 
 =head1 CONFIGURATION
  
 =over 4
  
-=item root
+=item schema
  
-Document root directory. Defaults to C<.> (current directory)
+The L<GraphQL::Schema>
   
 =back
 
