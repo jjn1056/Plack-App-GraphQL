@@ -335,7 +335,7 @@ sub respond_400 {
 
 =head1 NAME
  
-Plack::App::File - Serve static files from root directory
+Plack::App::GraphQL - Serve GraphQL from Plack / PSGI
  
 =head1 SYNOPSIS
  
@@ -348,9 +348,7 @@ Plack::App::File - Serve static files from root directory
     |;
 
     my %root_value = (
-      hello => sub {
-        return 'Hello World!'
-      }
+      hello => 'Hello World!',
     );
 
     my $app = Plack::App::GraphQL
@@ -372,8 +370,9 @@ Or mount under a given URL:
       mount "/graphql" => $app;
     };
 
-You can also use the 'path' configuration option to set a root path to match.
-(See documentation below).
+You can also use the 'endpoint' configuration option to set a root path to match.
+This is the most simple option if you application is not serving other endpoints
+or applications (See documentation below).
 
 =head1 DESCRIPTION
  
