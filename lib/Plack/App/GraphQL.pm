@@ -227,8 +227,21 @@ sub graphql_ui_psgi {
 
 sub respond_graphql {
   my ($self, $req) = @_;
-  my $results = $self->prepare_results($req);
-  return $self->graphql_psgi($results);
+  return sub {
+    my $responder = shift;
+    my $results = $self->prepare_results($req);
+    my $body = $self->json_encode($results);
+    my $cl = Plack::Util::content_length([$body]);
+    my $writer = $responder->([
+      200,
+      [
+        'Content-Type'   => 'application/json',
+        'Content-Length' => $cl,
+      ],
+    ]);
+    $writer->write($body);
+    $writer->close;
+  };
 }
 
 sub prepare_results {
@@ -287,6 +300,7 @@ sub prepare_handler {
   return $req->env->{'plack.graphql.handler'} ||= $self->handler;
 }
 
+use Future;
 sub execute {
   my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver) = @_;
   return my $results = GraphQL::Execution::execute(
@@ -297,22 +311,17 @@ sub execute {
     $variables,
     $operation_name,
     $resolver,
+    +{
+      all => sub {
+        my @futures = map {
+          $_->can('then') ? $_ : Future->new->done($_);
+        } @_;
+        Future->needs_all(@futures);
+      },
+      resolve => sub { Future->new->done(@_) },
+      reject => sub { Future->new->fail(@_) },
+    },
   );
-}
-
-
-sub graphql_psgi {
-  my ($self, $results) = @_;
-  my $body = [ $self->json_encode($results) ];
-  my $cl = Plack::Util::content_length($body);
-  return [
-      200,
-      [
-        'Content-Type'   => 'application/json',
-        'Content-Length' => $cl,
-      ],
-      $body,
-  ];
 }
 
 sub respond_404 {
