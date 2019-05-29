@@ -10,7 +10,7 @@ my $schema = q|
 my %root_value = (
   hello => sub {
     my ($args, $context, $info) = @_;
-    Future->done('world!!')
+    return Future->done('world!!')
   }
 );
 

@@ -170,14 +170,28 @@ has handler => (
     };
   }
 
-sub build_context {
-  my ($self, $req) = @_;
-  my $context_class = $self->context_class;
-  return $context_class->new(
-    request => $req, 
-    app => $self
-  );
-}
+has exceptions_class => (
+  is => 'ro',
+  required => 1,
+  builder => 'DEFAULT_EXCEPTIONS_CLASS',
+  coerce => sub { Plack::Util::load_class(shift) },
+);
+
+  our $DEFAULT_EXCEPTIONS_CLASS = 'Plack::App::GraphQL::Exceptions';
+  sub DEFAULT_EXCEPTIONS_CLASS { $DEFAULT_EXCEPTIONS_CLASS }
+
+has exceptions => (
+  is => 'ro',
+  required => 1,
+  lazy => 1,
+  handles => [qw(respond_415 respond_404 respond_400)],
+  builder => '_build_exceptions',
+);
+
+  sub _build_exceptions {
+    my $self = shift;
+    return $self->exceptions_class->new(psgi_app=>$self);
+  } 
 
 sub matches_endpoint {
   my ($self, $req) = @_;
@@ -192,17 +206,25 @@ sub accepts_graphiql {
   return 0;
 }
 
+sub accepts_graphql {
+  my ($self, $req) = @_;
+  return 1 if  (($req->env->{HTTP_ACCEPT}||'') =~ /^application\/json\b/);
+  return 0;
+}
+
 sub call {
   my ($self, $env) = @_;
   my $req = Plack::Request->new($env);
   if($self->matches_endpoint($req)) {
     if($self->accepts_graphiql($req)) {
       return $self->respond_graphiql($req);
-    } else {
+    } elsif($self->accepts_graphql($req)) {
       return $self->respond_graphql($req);
+    } else {
+      return $self->respond_415($req);
     }
   } else {
-    return $self->respond_404;
+    return $self->respond_404($req);
   }
 }
 
@@ -230,18 +252,36 @@ sub respond_graphql {
   return sub {
     my $responder = shift;
     my $results = $self->prepare_results($req);
-    my $body = $self->json_encode($results);
-    my $cl = Plack::Util::content_length([$body]);
-    my $writer = $responder->([
-      200,
-      [
-        'Content-Type'   => 'application/json',
-        'Content-Length' => $cl,
-      ],
-    ]);
-    $writer->write($body);
-    $writer->close;
-  };
+
+    if(ref($results)=~m/Future/) {
+      $results->on_done(sub {
+        my ($data) = @_;
+        my $body = $self->json_encode($data);
+        my $cl = Plack::Util::content_length([$body]);
+        my $writer = $responder->([
+          200,
+          [
+            'Content-Type'   => 'application/json',
+            'Content-Length' => $cl,
+          ],
+        ]);
+        $writer->write($body);
+        $writer->close;
+      });
+    } else {
+      my $body = $self->json_encode($results);
+      my $cl = Plack::Util::content_length([$body]);
+      my $writer = $responder->([
+        200,
+        [
+          'Content-Type'   => 'application/json',
+          'Content-Length' => $cl,
+        ],
+      ]);
+      $writer->write($body);
+      $writer->close;
+    };
+  }
 }
 
 sub prepare_results {
@@ -285,12 +325,21 @@ sub prepare_context {
   return my $context = $req->env->{'plack.graphql.context'} ||= $self->build_context($req);
 }
 
+sub build_context {
+  my ($self, $req) = @_;
+  my $context_class = $self->context_class;
+  return $context_class->new(
+    request => $req, 
+    app => $self
+  );
+}
+
 sub prepare_body {
   my ($self, $req) = @_;
   my $json_body = eval {
     $self->json_decode($req->raw_body());
   } || do {
-    $self->respond_400;
+    $self->respond_400($req);
   };
   return $json_body;
 }
@@ -314,30 +363,14 @@ sub execute {
     +{
       all => sub {
         my @futures = map {
-          $_->can('then') ? $_ : Future->new->done($_);
+          $_->can('then') ? $_ : Future->done($_);
         } @_;
         Future->needs_all(@futures);
       },
-      resolve => sub { Future->new->done(@_) },
-      reject => sub { Future->new->fail(@_) },
+      resolve => sub { Future->done(@_) },
+      reject => sub { Future->fail(@_) },
     },
   );
-}
-
-sub respond_404 {
-  return [
-    404,
-    ['Content-Type' => 'text/plain', 'Content-Length' => 9], 
-    ['Not Found']
-  ];
-}
-
-sub respond_400 {
-  return [
-    400,
-    ['Content-Type' => 'text/plain', 'Content-Length' => 11], 
-    ['Bad Request']
-  ];
 }
 
 1;
