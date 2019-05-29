@@ -252,24 +252,8 @@ sub respond_graphql {
   return sub {
     my $responder = shift;
     my $results = $self->prepare_results($req);
-
-    if(ref($results)=~m/Future/) {
-      $results->on_done(sub {
-        my ($data) = @_;
-        my $body = $self->json_encode($data);
-        my $cl = Plack::Util::content_length([$body]);
-        my $writer = $responder->([
-          200,
-          [
-            'Content-Type'   => 'application/json',
-            'Content-Length' => $cl,
-          ],
-        ]);
-        $writer->write($body);
-        $writer->close;
-      });
-    } else {
-      my $body = $self->json_encode($results);
+    my $psgi_streaming = sub {
+      my $body = $self->json_encode(shift);
       my $cl = Plack::Util::content_length([$body]);
       my $writer = $responder->([
         200,
@@ -281,7 +265,15 @@ sub respond_graphql {
       $writer->write($body);
       $writer->close;
     };
-  }
+
+    if(ref($results)=~m/Future/) {
+      $results->on_done(sub {
+        $psgi_streaming->(shift);
+      });
+    } else {
+      $psgi_streaming->($results);
+    }
+  };
 }
 
 sub prepare_results {
