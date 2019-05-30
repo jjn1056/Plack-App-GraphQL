@@ -3,6 +3,7 @@ package Plack::App::GraphQL;
 use Plack::Util;
 use Plack::Request;
 use GraphQL::Execution;
+use Safe::Isa;
 use Moo;
 
 extends 'Plack::Component';
@@ -134,6 +135,12 @@ has resolver => (
       undef;
   }
 
+has promise_code => (
+  is => 'ro',
+  required => 0,
+  lazy => 1,
+);
+
 has json_encoder => (
   is => 'ro',
   required => 1,
@@ -157,7 +164,7 @@ has handler => (
 
   sub _build_handler {
     return sub {
-      my ($self, $execute, $schema, $json_body, $root_value, $context, $resolver) = @_;
+      my ($self, $execute, $schema, $json_body, $root_value, $context, $resolver, $promise_code) = @_;
       return my $results = $execute->(
         $schema,
         $json_body->{query},
@@ -166,6 +173,7 @@ has handler => (
         $json_body->{variables},
         $json_body->{operationName},
         $resolver,
+        $promise_code,
       );
     };
   }
@@ -280,10 +288,11 @@ sub prepare_results {
   my ($self, $req) = @_;
   
   my $schema = $self->prepare_schema($req);
-  my $root_value = $self->prepare_root_value($req);
-  my $resolver = $self->prepare_resolver($req);
-  my $context = $self->prepare_context($req);
   my $json_body = $self->prepare_body($req);
+  my $root_value = $self->prepare_root_value($req);
+  my $context = $self->prepare_context($req);
+  my $resolver = $self->prepare_resolver($req);
+  my $promise_code = $self->prepare_promise_code($req);
   my $handler = $self->prepare_handler($req);
 
   return my $results = $handler->(
@@ -294,6 +303,7 @@ sub prepare_results {
     $root_value,
     $context,
     $resolver,
+    $promise_code,
   );
 }
 
@@ -310,6 +320,11 @@ sub prepare_root_value {
 sub prepare_resolver {
   my ($self, $req) = @_;
   return my $resolver = $req->env->{'plack.graphql.resolver'} ||= $self->resolver;
+}
+
+sub prepare_promise_code {
+  my ($self, $req) = @_;
+  return my $promise_code = $req->env->{'plack.graphql.promise_code'} ||= $self->promise_code;
 }
 
 sub prepare_context {
@@ -341,9 +356,8 @@ sub prepare_handler {
   return $req->env->{'plack.graphql.handler'} ||= $self->handler;
 }
 
-use Future;
 sub execute {
-  my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver) = @_;
+  my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver, $promise_code) = @_;
   return my $results = GraphQL::Execution::execute(
     $schema,
     $query,
@@ -352,16 +366,7 @@ sub execute {
     $variables,
     $operation_name,
     $resolver,
-    +{
-      all => sub {
-        my @futures = map {
-          $_->can('then') ? $_ : Future->done($_);
-        } @_;
-        Future->needs_all(@futures);
-      },
-      resolve => sub { Future->done(@_) },
-      reject => sub { Future->fail(@_) },
-    },
+    $promise_code,
   );
 }
 
