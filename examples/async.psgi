@@ -25,9 +25,10 @@ my $promise_code = +{
   },
   all => sub {
     my @futures = map {
-      $_->$_can('then') ? $_ : Future->done($_);
+      my $future = $_->$_can('then') ? $_ : Future->done($_);
+      $future->transform(done => sub { [@_] }); 
     } @_;
-    Future->needs_all(map { $_->transform(done => sub { [@_] }) } @futures);
+    Future->needs_all(@futures);
   },
   resolve => sub { Future->done(@_) },
   reject => sub { Future->fail(@_) },
