@@ -163,19 +163,24 @@ has handler => (
 );
 
   sub _build_handler {
+    my $self = shift;
     return sub {
-      my ($self, $execute, $schema, $json_body, $root_value, $context, $resolver, $promise_code) = @_;
-      return my $results = $execute->(
-        $schema,
-        $json_body->{query},
-        $root_value,
-        $context,
-        $json_body->{variables},
-        $json_body->{operationName},
-        $resolver,
-        $promise_code,
-      );
+      $self->default_handler(@_);
     };
+  }
+
+  sub default_handler {
+    my ($self, $execute, $schema, $json_body, $root_value, $context, $resolver, $promise_code) = @_;
+    return my $results = $execute->(
+      $schema,
+      $json_body->{query},
+      $root_value,
+      $context,
+      $json_body->{variables},
+      $json_body->{operationName},
+      $resolver,
+      $promise_code,
+    );
   }
 
 has exceptions_class => (
@@ -206,6 +211,13 @@ sub matches_endpoint {
   return $req->env->{PATH_INFO} eq $self->endpoint ? 1:0;
 }
 
+sub call {
+  my ($self, $env) = @_;
+  my $req = Plack::Request->new($env);
+  return $self->respond($req) if $self->matches_endpoint($req);
+  return $self->respond_404($req);
+}
+
 sub accepts_graphiql {
   my ($self, $req) = @_;
   return 1  if $self->graphiql
@@ -220,73 +232,64 @@ sub accepts_graphql {
   return 0;
 }
 
-sub call {
-  my ($self, $env) = @_;
-  my $req = Plack::Request->new($env);
-  if($self->matches_endpoint($req)) {
-    if($self->accepts_graphiql($req)) {
-      return $self->respond_graphiql($req);
-    } elsif($self->accepts_graphql($req)) {
-      return $self->respond_graphql($req);
-    } else {
-      return $self->respond_415($req);
-    }
-  } else {
-    return $self->respond_404($req);
-  }
+sub respond {
+  my ($self, $req) = @_;
+  return sub { $self->respond_graphiql($req, @_) } if $self->accepts_graphiql($req);
+  return sub { $self->respond_graphql($req, @_) } if $self->accepts_graphql($req);
+  return $self->respond_415($req);
 }
 
 sub respond_graphiql {
-  my ($self, $req) = @_;
+  my ($self, $req, $responder) = @_;
   my $body = $self->ui_template->process($req);
-  return $self->graphql_ui_psgi($body)
-}
-
-sub graphql_ui_psgi {
-  my ($self, $body) = @_;
   my $cl = Plack::Util::content_length([$body]);
-  return [
+  return $responder->(
+    [
       200,
       [
         'Content-Type'   => 'text/html',
         'Content-Length' => $cl,
       ],
       [$body],
-  ];
+    ]
+  );
 }
 
 sub respond_graphql {
-  my ($self, $req) = @_;
-  return sub {
-    my $responder = shift;
-    my $results = $self->prepare_results($req);
-    my $psgi_streaming = sub {
-      my $body = $self->json_encode(shift);
-      my $cl = Plack::Util::content_length([$body]);
-      my $writer = $responder->([
-        200,
-        [
-          'Content-Type'   => 'application/json',
-          'Content-Length' => $cl,
-        ],
-      ]);
-      $writer->write($body);
-      $writer->close;
-    };
+  my ($self, $req, $responder) = @_;
+  my ($results, $context) = $self->prepare_results($req);
+  my $writer = $self->prepare_writer($context, $responder);
 
-    if(ref($results)=~m/Future/) {
-      $results->on_done(sub {
-        $psgi_streaming->(shift);
-      });
-    } else {
-      $psgi_streaming->($results);
-    }
-  };
+  # This is ugly, and might not be in the right place...
+  if(ref($results)=~m/Future/) {
+    $results->on_done(sub {
+      return $self->write_results($context, shift, $writer);
+    }); # needs on_fail...
+  } else {
+    return $self->write_results($context, $results, $writer)
+  }
+}
+
+sub prepare_writer {
+  my ($self, $context, $responder) = @_;
+  my @headers = $self->prepare_headers($context);
+  return my $writer = $responder->([200, \@headers]);
+}
+
+sub prepare_headers {
+  my ($self, $context) = @_;
+  return my @headers = ('Content-Type' => 'application/json');
+}
+
+sub write_results {
+  my ($self, $context, $results, $writer) = @_;
+  my $body = $self->json_encode($results);
+  $writer->write($body);
+  $writer->close;
 }
 
 sub prepare_results {
   my ($self, $req) = @_;
-  
   my $schema = $self->prepare_schema($req);
   my $json_body = $self->prepare_body($req);
   my $root_value = $self->prepare_root_value($req);
@@ -294,9 +297,7 @@ sub prepare_results {
   my $resolver = $self->prepare_resolver($req);
   my $promise_code = $self->prepare_promise_code($req);
   my $handler = $self->prepare_handler($req);
-
-  return my $results = $handler->(
-    $self,
+  my $results = $handler->(
     sub { $self->execute(@_) },
     $schema,
     $json_body,
@@ -305,6 +306,8 @@ sub prepare_results {
     $resolver,
     $promise_code,
   );
+
+  return ($results, $context);
 }
 
 sub prepare_schema { 
@@ -425,7 +428,10 @@ the configuration options are pretty set now) then you shouldn't use this. I rec
 looking at official plugins for Dancer and Mojolicious: L<Dancer2::Plugin::GraphQL>,
 L<Mojolicious::Plugin::GraphQL>.
 
-This currently doesnt support an asychronous response.  Patchs and discussion welcomed!
+This currently doesnt support an asychronous until updates are made in core L<GraphQL>.
+
+I'm likely to make significant changes to this after I actually use it in a live
+application!
 
 =head1 CONFIGURATION
  

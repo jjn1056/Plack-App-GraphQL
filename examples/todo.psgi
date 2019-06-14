@@ -26,7 +26,8 @@ my %root_value = (
   },
   add_todo => sub {
     my ($args, $context, $info) = @_;
-    return push @data, $args;
+    push @data, $args;
+    return $args;
   }
 );
 
