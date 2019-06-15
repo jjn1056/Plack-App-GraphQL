@@ -10,6 +10,8 @@ extends 'Plack::Component';
 
 our $VERSION = '0.001';
 
+sub A { our $A ||= 1 }
+
 has convert => (
   is => 'ro',
   isa => sub { ref($_[0]) ? 1:0 },
@@ -27,8 +29,7 @@ has convert => (
   sub normalize_convert_class {
     my $class_proto = shift;
     my $class = $class_proto =~m/^\+(.+)$/ ?
-      $1 :
-      "GraphQL::Plugin::Convert::$class_proto";
+      $1 : "GraphQL::Plugin::Convert::$class_proto";
     return Plack::Util::load_class($class);
   }
 
@@ -39,15 +40,18 @@ has schema => (
   builder => '_build_schema',
   coerce => sub {
     my $schema_proto = shift;
-    return ref($schema_proto) ?
+    return (ref($schema_proto) =~m/GraphQL::Schema/) ?
       $schema_proto :
       coerce_schema($schema_proto);
   }
 );
 
   sub coerce_schema {
+    my $source = Plack::Util::is_real_fh($_[0]) ?
+      do { local $/ = undef; <$_[0]> } : 
+        $_[0];
     return Plack::Util::load_class("GraphQL::Schema")
-       ->from_doc(shift); 
+      ->from_doc($source);
   }
 
   sub _build_schema {
@@ -63,8 +67,7 @@ has endpoint => (
   builder => 'DEFAULT_ENDPOINT',
 );
 
-  our $DEFAULT_ENDPOINT = '/';
-  sub DEFAULT_ENDPOINT { $DEFAULT_ENDPOINT }
+  sub DEFAULT_ENDPOINT { our $DEFAULT_ENDPOINT ||= '/' }
 
 has context_class => (
   is => 'ro',
@@ -73,8 +76,7 @@ has context_class => (
   coerce => sub { Plack::Util::load_class($_[0]) },
 );
 
-  our $DEFAULT_CONTEXT_CLASS = 'Plack::App::GraphQL::Context';
-  sub DEFAULT_CONTEXT_CLASS { $DEFAULT_CONTEXT_CLASS }
+  sub DEFAULT_CONTEXT_CLASS { our $DEFAULT_CONTEXT_CLASS ||= 'Plack::App::GraphQL::Context' }
 
 has ui_template_class => (
   is => 'ro',
@@ -83,12 +85,12 @@ has ui_template_class => (
   coerce => sub { Plack::Util::load_class(shift) },
 );
 
-  our $DEFAULT_UI_TEMPLATE_CLASS = 'Plack::App::GraphQL::UITemplate';
-  sub DEFAULT_UI_TEMPLATE_CLASS { $DEFAULT_UI_TEMPLATE_CLASS }
+  sub DEFAULT_UI_TEMPLATE_CLASS { our $DEFAULT_UI_TEMPLATE_CLASS ||= 'Plack::App::GraphQL::UITemplate' }
 
 has ui_template => (
   is => 'ro',
   required => 1,
+  init_arg => undef,
   builder => '_build_ui_template',
   lazy => 1,
 );
@@ -118,8 +120,7 @@ has graphiql => (
   builder => 'DEFAULT_GRAPHIQL',
 );
 
-  our $DEFAULT_GRAPHIQL = 0;
-  sub DEFAULT_GRAPHIQL { $DEFAULT_GRAPHIQL }
+  sub DEFAULT_GRAPHIQL { our $DEFAULT_GRAPHIQL ||= 0 }
 
 has resolver => (
   is => 'ro',
@@ -148,39 +149,15 @@ has json_encoder => (
     json_encode => 'encode',
     json_decode => 'decode',
   },
-  default => sub {
-    Plack::Util::load_class('JSON::MaybeXS')
+  builder => '_build_json_encoder',
+);
+
+  our $DEFAULT_JSON_CLASS = 'JSON::MaybeXS';
+  sub _build_json_encoder {
+    return our $JSON_ENCODER ||= Plack::Util::load_class($DEFAULT_JSON_CLASS)
       ->new
       ->utf8
       ->allow_nonref;
-  }
-);
-
-has handler => (
-  is => 'ro',
-  required => 1,
-  builder => '_build_handler',
-);
-
-  sub _build_handler {
-    my $self = shift;
-    return sub {
-      $self->default_handler(@_);
-    };
-  }
-
-  sub default_handler {
-    my ($self, $execute, $schema, $json_body, $root_value, $context, $resolver, $promise_code) = @_;
-    return my $results = $execute->(
-      $schema,
-      $json_body->{query},
-      $root_value,
-      $context,
-      $json_body->{variables},
-      $json_body->{operationName},
-      $resolver,
-      $promise_code,
-    );
   }
 
 has exceptions_class => (
@@ -196,6 +173,7 @@ has exceptions_class => (
 has exceptions => (
   is => 'ro',
   required => 1,
+  init_arg => undef,
   lazy => 1,
   handles => [qw(respond_415 respond_404 respond_400)],
   builder => '_build_exceptions',
@@ -206,16 +184,23 @@ has exceptions => (
     return $self->exceptions_class->new(psgi_app=>$self);
   } 
 
-sub matches_endpoint {
-  my ($self, $req) = @_;
-  return $req->env->{PATH_INFO} eq $self->endpoint ? 1:0;
-}
-
 sub call {
   my ($self, $env) = @_;
   my $req = Plack::Request->new($env);
   return $self->respond($req) if $self->matches_endpoint($req);
   return $self->respond_404($req);
+}
+
+sub matches_endpoint {
+  my ($self, $req) = @_;
+  return $req->env->{PATH_INFO} eq $self->endpoint ? 1:0;
+}
+
+sub respond {
+  my ($self, $req) = @_;
+  return sub { $self->respond_graphiql($req, @_) } if $self->accepts_graphiql($req);
+  return sub { $self->respond_graphql($req, @_) } if $self->accepts_graphql($req);
+  return $self->respond_415($req);
 }
 
 sub accepts_graphiql {
@@ -230,13 +215,6 @@ sub accepts_graphql {
   my ($self, $req) = @_;
   return 1 if  (($req->env->{HTTP_ACCEPT}||'') =~ /^application\/json\b/);
   return 0;
-}
-
-sub respond {
-  my ($self, $req) = @_;
-  return sub { $self->respond_graphiql($req, @_) } if $self->accepts_graphiql($req);
-  return sub { $self->respond_graphql($req, @_) } if $self->accepts_graphql($req);
-  return $self->respond_415($req);
 }
 
 sub respond_graphiql {
@@ -290,58 +268,18 @@ sub write_results {
 
 sub prepare_results {
   my ($self, $req) = @_;
-  my $schema = $self->prepare_schema($req);
-  my $json_body = $self->prepare_body($req);
-  my $root_value = $self->prepare_root_value($req);
-  my $context = $self->prepare_context($req);
-  my $resolver = $self->prepare_resolver($req);
-  my $promise_code = $self->prepare_promise_code($req);
-  my $handler = $self->prepare_handler($req);
-  my $results = $handler->(
-    sub { $self->execute(@_) },
-    $schema,
-    $json_body,
-    $root_value,
+  my $data = $self->prepare_body($req);
+  my $context = $self->prepare_context($req, $data);
+  my $results = $self->execute(
+    $self->schema,
+    $data,
+    $self->root_value,
     $context,
-    $resolver,
-    $promise_code,
+    $self->resolver,
+    $self->promise_code,
   );
 
   return ($results, $context);
-}
-
-sub prepare_schema { 
-  my ($self, $req) = @_;
-  return my $schema = $req->env->{'plack.graphql.schema'} ||= $self->schema;
-}
-
-sub prepare_root_value {
-  my ($self, $req) = @_;
-  return my $root_value = $req->env->{'plack.graphql.root_value'} ||= $self->root_value;
-}
-
-sub prepare_resolver {
-  my ($self, $req) = @_;
-  return my $resolver = $req->env->{'plack.graphql.resolver'} ||= $self->resolver;
-}
-
-sub prepare_promise_code {
-  my ($self, $req) = @_;
-  return my $promise_code = $req->env->{'plack.graphql.promise_code'} ||= $self->promise_code;
-}
-
-sub prepare_context {
-  my ($self, $req) = @_;
-  return my $context = $req->env->{'plack.graphql.context'} ||= $self->build_context($req);
-}
-
-sub build_context {
-  my ($self, $req) = @_;
-  my $context_class = $self->context_class;
-  return $context_class->new(
-    request => $req, 
-    app => $self
-  );
 }
 
 sub prepare_body {
@@ -354,20 +292,30 @@ sub prepare_body {
   return $json_body;
 }
 
-sub prepare_handler {
+sub prepare_context {
   my ($self, $req) = @_;
-  return $req->env->{'plack.graphql.handler'} ||= $self->handler;
+  return my $context = $req->env->{'plack.graphql.context'} ||= $self->build_context($req);
+}
+
+sub build_context {
+  my ($self, $req, $data) = @_;
+  my $context_class = $self->context_class;
+  return $context_class->new(
+    request => $req, 
+    data => $data,
+    app => $self,
+  );
 }
 
 sub execute {
-  my ($self, $schema, $query, $root_value, $context, $variables, $operation_name, $resolver, $promise_code) = @_;
+  my ($self, $schema, $data, $root_value, $context, $resolver, $promise_code) = @_;
   return my $results = GraphQL::Execution::execute(
     $schema,
-    $query,
+    $data->{query},
     $root_value,
     $context,
-    $variables,
-    $operation_name,
+    $data->{variables},
+    $data->{operationName},
     $resolver,
     $promise_code,
   );
@@ -418,39 +366,39 @@ or applications (See documentation below).
 
 =head1 DESCRIPTION
  
-Serve GraphQL with Plack.
+Serve L<GraphQL> with L<Plack>.
 
-Please note this is an early access / no documentation release.  You should already
+Please note this is an early access / minimal documentation release.  You should already
 be familiar with L<GraphQL>.  There's some examples in C</examples> but no real test
-cases.  If you are not confortable using this based on reading the source code and
+cases.  If you are not comfortable using this based on reading the source code and
 can't accept the possibility that the underlying code might change (although I expect
 the configuration options are pretty set now) then you shouldn't use this. I recommend
 looking at official plugins for Dancer and Mojolicious: L<Dancer2::Plugin::GraphQL>,
 L<Mojolicious::Plugin::GraphQL>.
 
-This currently doesnt support an asychronous until updates are made in core L<GraphQL>.
+This currently doesn't support an asychronous responses until updates are made in 
+core L<GraphQL>.
 
-I'm likely to make significant changes to this after I actually use it in a live
-application!
+I'm likely to make significant changes to how the code here is organized after I actually 
+use it in a live application!
 
 =head1 CONFIGURATION
  
-=over 4
- 
-=item schema
- 
-The L<GraphQL::Schema>
-  
-=back
+The follow documents configuration arguments
 
-=head2 METHODS
+=head2 schema
+
+The L<GraphQL::Schema>.  If you pass a string or a filehandle, we will assume that
+is a document we can convert one.
+
+=head1 METHODS
  
 =head1 AUTHOR
  
-John Napiorkowski
+John Napiorkowski <jnapiork@cpan.org>
 
 =head1 SEE ALSO
  
-L<GraphQL> L<Plack>
+L<GraphQL>, L<Plack>
  
 =cut
