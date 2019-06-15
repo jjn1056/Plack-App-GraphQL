@@ -10,29 +10,6 @@ extends 'Plack::Component';
 
 our $VERSION = '0.001';
 
-sub A { our $A ||= 1 }
-
-has convert => (
-  is => 'ro',
-  isa => sub { ref($_[0]) ? 1:0 },
-  predicate => 'has_convert',
-  coerce => sub {
-    if(ref($_[0]) eq 'ARRAY') {
-      my ($class_proto, @args) = @{$_[0]};
-      return normalize_convert_class($class_proto)->to_graphql(@args);
-    } else {
-      return $_[0]; # assume its a hashref already.
-    }
-  },
-);
-
-  sub normalize_convert_class {
-    my $class_proto = shift;
-    my $class = $class_proto =~m/^\+(.+)$/ ?
-      $1 : "GraphQL::Plugin::Convert::$class_proto";
-    return Plack::Util::load_class($class);
-  }
-
 has schema => (
   is => 'ro',
   lazy => 1,
@@ -60,6 +37,61 @@ has schema => (
       $self->convert->{schema} :
       undef;
   }
+
+has root_value => (
+  is => 'ro',
+  required => 1,
+  lazy => 1,
+  builder => '_build_root_value',
+);
+
+  sub _build_root_value {
+    my $self = shift;
+    return $self->has_convert ? 
+      $self->convert->{root_value} :
+      undef;
+  }
+
+has resolver => (
+  is => 'ro',
+  required => 0,
+  lazy => 1,
+  builder => '_build_resolver',
+);
+
+  sub _build_resolver {
+    my $self = shift;
+    return $self->has_convert ? 
+      $self->convert->{resolver} :
+      undef;
+  }
+
+has convert => (
+  is => 'ro',
+  isa => sub { ref($_[0]) ? 1:0 },
+  predicate => 'has_convert',
+  coerce => sub {
+    if(ref($_[0]) eq 'ARRAY') {
+      my ($class_proto, @args) = @{$_[0]};
+      return normalize_convert_class($class_proto)->to_graphql(@args);
+    } else {
+      return $_[0]; # assume its a hashref already.
+    }
+  },
+);
+
+  sub normalize_convert_class {
+    my $class_proto = shift;
+    my $class = $class_proto =~m/^\+(.+)$/ ?
+      $1 : "GraphQL::Plugin::Convert::$class_proto";
+    return Plack::Util::load_class($class);
+  }
+
+has promise_code => (
+  is => 'ro',
+  required => 0,
+  lazy => 1,
+);
 
 has endpoint => (
   is => 'ro',
@@ -101,20 +133,6 @@ has ui_template => (
     $self->ui_template_class->new(json_encoder => $self->json_encoder);
   }
 
-has root_value => (
-  is => 'ro',
-  required => 1,
-  lazy => 1,
-  builder => '_build_root_value',
-);
-
-  sub _build_root_value {
-    my $self = shift;
-    return $self->has_convert ? 
-      $self->convert->{root_value} :
-      undef;
-  }
-
 has graphiql => (
   is => 'ro',
   required => 1,
@@ -122,26 +140,6 @@ has graphiql => (
 );
 
   sub DEFAULT_GRAPHIQL { our $DEFAULT_GRAPHIQL ||= 0 }
-
-has resolver => (
-  is => 'ro',
-  required => 0,
-  lazy => 1,
-  builder => '_build_resolver',
-);
-
-  sub _build_resolver {
-    my $self = shift;
-    return $self->has_convert ? 
-      $self->convert->{resolver} :
-      undef;
-  }
-
-has promise_code => (
-  is => 'ro',
-  required => 0,
-  lazy => 1,
-);
 
 has json_encoder => (
   is => 'ro',
@@ -221,13 +219,12 @@ sub accepts_graphql {
 sub respond_graphiql {
   my ($self, $req, $responder) = @_;
   my $body = $self->ui_template->process($req);
-  my $cl = Plack::Util::content_length([$body]);
   return $responder->(
     [
       200,
       [
         'Content-Type'   => 'text/html',
-        'Content-Length' => $cl,
+        'Content-Length' => Plack::Util::content_length([$body]),
       ],
       [$body],
     ]
@@ -279,7 +276,6 @@ sub prepare_results {
     $self->resolver,
     $self->promise_code,
   );
-
   return ($results, $context);
 }
 
