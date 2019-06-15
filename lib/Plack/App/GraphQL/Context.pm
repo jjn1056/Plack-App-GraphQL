@@ -2,7 +2,8 @@ package Plack::App::GraphQL::Context;
 
 use Moo;
 
-has ['request', 'app'] => (is=>'ro', required=>1);
+has ['request', 'app', 'data'] => (is=>'ro', required=>1);
+has log => (is=>'ro', required=>0);
 
 sub req { shift->request }
 

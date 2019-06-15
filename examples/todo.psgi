@@ -1,3 +1,4 @@
+use Plack::Builder;
 use Plack::App::GraphQL;
 
 my $schema = q|
@@ -26,15 +27,22 @@ my %root_value = (
   },
   add_todo => sub {
     my ($args, $context, $info) = @_;
+    $context->log->({level =>'debug', message => 'I am here.....'});
     push @data, $args;
     return $args;
   }
 );
 
-return my $app = Plack::App::GraphQL
+my $app = Plack::App::GraphQL
   ->new(
       schema => $schema, 
       root_value => \%root_value, 
       graphiql=>1,
       endpoint=>'/graphql')
   ->to_app;
+
+
+builder {
+  enable "SimpleLogger", level => "debug";
+  $app;
+};

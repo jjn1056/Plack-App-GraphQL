@@ -81,6 +81,7 @@ has context_class => (
 has ui_template_class => (
   is => 'ro',
   required => 1,
+  init_arg => undef,
   builder => 'DEFAULT_UI_TEMPLATE_CLASS',
   coerce => sub { Plack::Util::load_class(shift) },
 );
@@ -304,6 +305,7 @@ sub build_context {
     request => $req, 
     data => $data,
     app => $self,
+    log => $req->env->{'psgix.logger'},
   );
 }
 
@@ -379,17 +381,54 @@ L<Mojolicious::Plugin::GraphQL>.
 This currently doesn't support an asychronous responses until updates are made in 
 core L<GraphQL>.
 
-I'm likely to make significant changes to how the code here is organized after I actually 
-use it in a live application!
-
 =head1 CONFIGURATION
  
 The follow documents configuration arguments
 
 =head2 schema
 
-The L<GraphQL::Schema>.  If you pass a string or a filehandle, we will assume that
-is a document we can convert one.
+The L<GraphQL::Schema>.  If you pass a string or a filehandle, we will assume that it
+is a parse-able graphql SDL document that we can build a schema object from.
+
+=head2 root_value
+
+An object, hashref or coderef that field resolvers can use to look up requests.
+
+=head2 resolver
+
+Used to change how field resolvers work.  See L<GraphQL> (or ignore this since its likely
+something you really don't need for normal work.
+
+=head2 convert
+
+This takes a sub class of L<GraphQL::Plugin::Convert>, such as L<GraphQL::Plugin::Convert::DBIC>.
+Providing this will automatically provide L</schema>, L</root_value> and L</resolver>.
+
+=head2 endpoint
+
+The URI path part that is associated with the graphql API endpoint.  Often this is set to
+'graphql'.  The default is '/'.  You might prefer to use a custom or alternative router
+(for example L<Plack::Builder>).
+
+=head2 context_class
+
+Default is L<Plack::App::GraphQL::Context>.  This is an object that is passed as the 'context'
+argument to your field resolvers.  You might wish to subclass this to add additional useful
+methods such as simple access to a user object (if you you authentication for example).
+
+=head2 graphiql
+
+Boolean that defaults to FALSE.  Turn this on to enable the HTML Interactice GraphQL query
+screen.   Useful for leaning and debugging but you probably want it off in production.
+
+=head2 json_encoder
+
+Lets you specify the instance of the class used for JSON encoding / decoding.
+
+=head2 exceptions_class
+
+Class that provides the exception responses.  Override the default (L<Plack::App::GraphQL::Exceptions>
+if you want complete control over how your errors look.
 
 =head1 METHODS
  
