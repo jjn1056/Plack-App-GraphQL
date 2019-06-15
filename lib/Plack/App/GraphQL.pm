@@ -10,6 +10,27 @@ extends 'Plack::Component';
 
 our $VERSION = '0.001';
 
+has convert => (
+  is => 'ro',
+  isa => sub { ref($_[0]) ? 1:0 },
+  predicate => 'has_convert',
+  coerce => sub {
+    if(ref($_[0]) eq 'ARRAY') {
+      my ($class_proto, @args) = @{$_[0]};
+      return normalize_convert_class($class_proto)->to_graphql(@args);
+    } else {
+      return $_[0]; # assume its a hashref already.
+    }
+  },
+);
+
+  sub normalize_convert_class {
+    my $class_proto = shift;
+    my $class = $class_proto =~m/^\+(.+)$/ ?
+      $1 : "GraphQL::Plugin::Convert::$class_proto";
+    return Plack::Util::load_class($class);
+  }
+
 has schema => (
   is => 'ro',
   lazy => 1,
@@ -64,27 +85,6 @@ has resolver => (
     return $self->has_convert ? 
       $self->convert->{resolver} :
       undef;
-  }
-
-has convert => (
-  is => 'ro',
-  isa => sub { ref($_[0]) ? 1:0 },
-  predicate => 'has_convert',
-  coerce => sub {
-    if(ref($_[0]) eq 'ARRAY') {
-      my ($class_proto, @args) = @{$_[0]};
-      return normalize_convert_class($class_proto)->to_graphql(@args);
-    } else {
-      return $_[0]; # assume its a hashref already.
-    }
-  },
-);
-
-  sub normalize_convert_class {
-    my $class_proto = shift;
-    my $class = $class_proto =~m/^\+(.+)$/ ?
-      $1 : "GraphQL::Plugin::Convert::$class_proto";
-    return Plack::Util::load_class($class);
   }
 
 has promise_code => (
@@ -212,8 +212,7 @@ sub accepts_graphiql {
 
 sub accepts_graphql {
   my ($self, $req) = @_;
-  return 1 if  (($req->env->{HTTP_ACCEPT}||'') =~ /^application\/json\b/);
-  return 0;
+  return (($req->env->{HTTP_ACCEPT}||'') =~ /^application\/json\b/) ? 1:0;
 }
 
 sub respond_graphiql {
@@ -236,7 +235,7 @@ sub respond_graphql {
   my ($results, $context) = $self->prepare_results($req);
   my $writer = $self->prepare_writer($context, $responder);
 
-  # This is ugly, and might not be in the right place...
+  # This is ugly; its just a placeholder until GraphQL allows Futures.
   if(ref($results)=~m/Future/) {
     $results->on_done(sub {
       return $self->write_results($context, shift, $writer);
@@ -400,6 +399,9 @@ something you really don't need for normal work.
 This takes a sub class of L<GraphQL::Plugin::Convert>, such as L<GraphQL::Plugin::Convert::DBIC>.
 Providing this will automatically provide L</schema>, L</root_value> and L</resolver>.
 
+You can shortcut the value of this with a '+' and we will assume the default namespace.  For
+example '+DBIC' is the same as 'GraphQL::Plugin::Convert::DBIC'.
+
 =head2 endpoint
 
 The URI path part that is associated with the graphql API endpoint.  Often this is set to
@@ -414,12 +416,19 @@ methods such as simple access to a user object (if you you authentication for ex
 
 =head2 graphiql
 
-Boolean that defaults to FALSE.  Turn this on to enable the HTML Interactice GraphQL query
+Boolean that defaults to FALSE.  Turn this on to enable the HTML Interactive GraphQL query
 screen.   Useful for leaning and debugging but you probably want it off in production.
+
+B<NOTE> If you want to use this you should also install L<Template::Tiny> which is needed.  We
+don't make L<Template::Tiny> a dependency here so that you are not forced to install it where
+you don't want the interactive screens (such as production).
 
 =head2 json_encoder
 
-Lets you specify the instance of the class used for JSON encoding / decoding.
+Lets you specify the instance of the class used for JSON encoding / decoding.  The default is
+L<JSON::MaybeXS> so you will want to be sure install a fast JSON de/encoder in production, such
+as L<Cpanel::JSON::XS> (it will default to a pure Perl one which might not need your speed 
+requirements).
 
 =head2 exceptions_class
 
