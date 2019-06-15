@@ -366,28 +366,31 @@ or applications (See documentation below).
 Serve L<GraphQL> with L<Plack>.
 
 Please note this is an early access / minimal documentation release.  You should already
-be familiar with L<GraphQL>.  There's some examples in C</examples> but no real test
+be familiar with L<GraphQL>.  There's some examples in C</examples> but few real test
 cases.  If you are not comfortable using this based on reading the source code and
 can't accept the possibility that the underlying code might change (although I expect
 the configuration options are pretty set now) then you shouldn't use this. I recommend
 looking at official plugins for Dancer and Mojolicious: L<Dancer2::Plugin::GraphQL>,
-L<Mojolicious::Plugin::GraphQL>.
+L<Mojolicious::Plugin::GraphQL> instead (or you can send me patches :) ).
 
 This currently doesn't support an asychronous responses until updates are made in 
 core L<GraphQL>.
 
 =head1 CONFIGURATION
  
-The follow documents configuration arguments
+This L<Plack> applications supports the following configuration arguments:
 
 =head2 schema
 
-The L<GraphQL::Schema>.  If you pass a string or a filehandle, we will assume that it
-is a parse-able graphql SDL document that we can build a schema object from.
+The L<GraphQL::Schema>.  Canonically this should be an instance of L<GraphQL::Schema>
+but if you pass a string or a filehandle, we will assume that it is a parse-able 
+graphql SDL document that we can build a schema object from.  Makes for easy demos.
 
 =head2 root_value
 
-An object, hashref or coderef that field resolvers can use to look up requests.
+An object, hashref or coderef that field resolvers can use to look up requests.  Generally
+the method or hash keys will match the query or mutation keys.  See the examples for
+more.
 
 =head2 resolver
 
@@ -417,7 +420,7 @@ methods such as simple access to a user object (if you you authentication for ex
 =head2 graphiql
 
 Boolean that defaults to FALSE.  Turn this on to enable the HTML Interactive GraphQL query
-screen.   Useful for leaning and debugging but you probably want it off in production.
+screen.  Useful for leaning and debugging but you probably want it off in production.
 
 B<NOTE> If you want to use this you should also install L<Template::Tiny> which is needed.  We
 don't make L<Template::Tiny> a dependency here so that you are not forced to install it where
@@ -425,17 +428,19 @@ you don't want the interactive screens (such as production).
 
 =head2 json_encoder
 
-Lets you specify the instance of the class used for JSON encoding / decoding.  The default is
-L<JSON::MaybeXS> so you will want to be sure install a fast JSON de/encoder in production, such
-as L<Cpanel::JSON::XS> (it will default to a pure Perl one which might not need your speed 
+Lets you specify the instance of the class used for JSON encoding / decoding.  The default is an
+instance of L<JSON::MaybeXS> so you will want to be sure install a fast JSON de/encoder in production,
+such as L<Cpanel::JSON::XS> (it will default to a pure Perl one which might not need your speed 
 requirements).
 
 =head2 exceptions_class
 
-Class that provides the exception responses.  Override the default (L<Plack::App::GraphQL::Exceptions>
+Class that provides the exception responses.  Override the default (L<Plack::App::GraphQL::Exceptions>)
 if you want complete control over how your errors look.
 
 =head1 METHODS
+
+    TBD
  
 =head1 AUTHOR
  
@@ -444,5 +449,13 @@ John Napiorkowski <jnapiork@cpan.org>
 =head1 SEE ALSO
  
 L<GraphQL>, L<Plack>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2019 by "AUTHOR" as listed above.
+
+=head1 LICENSE
+
+This library is free software and may be distributed under the same terms as perl itself.
  
 =cut
