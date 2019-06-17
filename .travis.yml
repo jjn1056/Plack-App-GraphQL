@@ -19,6 +19,9 @@ matrix:
   allow_failures:
     - perl: blead
     - perl: dev
+    - perl: 5.12
+    - perl: 5.10
+    - perl: 5.8
 before_install:
    - eval $(curl https://travis-perl.github.io/init) --auto
 
