@@ -91,7 +91,7 @@ has promise_code => (
   is => 'ro',
   required => 0,
   lazy => 1,
-);
+); # TODO waiting on GraphQL
 
 has endpoint => (
   is => 'ro',
