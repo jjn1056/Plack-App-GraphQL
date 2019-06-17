@@ -323,6 +323,19 @@ sub execute {
 =head1 NAME
  
 Plack::App::GraphQL - Serve GraphQL from Plack / PSGI
+
+=begin markdown
+
+
+https://travis-ci.org/jjn1056/Plack-App-GraphQL
+
+# PROJECT STATUS
+| OS      |  Build status |
+|:-------:|--------------:|
+| Linux   | [![Build Status](https://travis-ci.org/jjn1056/Plack-App-GraphQL.svg?branch=master)](https://travis-ci.org/jjn1056/Plack-App-GraphQL) |
+[![CPAN version](https://badge.fury.io/pl/Plack-App-GraphQL.svg)](https://metacpan.org/pod/Plack-App-GraphQL) 
+
+=end markdown
  
 =head1 SYNOPSIS
  
