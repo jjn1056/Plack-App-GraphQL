@@ -307,7 +307,7 @@ sub build_context {
 
 sub prepare_root_value {
   my ($self, $context) = @_;
-  return my $context->req->env->{'plack.graphql.root_value'} ||= $self->root_value;
+  return my $root_value = $context->req->env->{'plack.graphql.root_value'} ||= $self->root_value;
 }
 
 sub execute {
@@ -409,6 +409,12 @@ graphql SDL document that we can build a schema object from.  Makes for easy dem
 An object, hashref or coderef that field resolvers can use to look up requests.  Generally
 the method or hash keys will match the query or mutation keys.  See the examples for
 more.
+
+You can override this at runtime (with for example a bit of middleware) by using the
+'plack.graphql.root_value' key in the PSGI $env.  This may or my not be considered a
+good practice :)  Some examples suggest always using the $context for stuff like this
+while other examples seem to think its a good idea.  I choose to rather enable this
+ability and let you decide what is right for your application.
 
 =head2 resolver
 
