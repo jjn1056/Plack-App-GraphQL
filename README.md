@@ -2,8 +2,6 @@
 
 Plack::App::GraphQL - Serve GraphQL from Plack / PSGI
 
-https://travis-ci.org/jjn1056/Plack-App-GraphQL
-
 # PROJECT STATUS
 
 [![Build Status](https://travis-ci.org/jjn1056/Plack-App-GraphQL.svg?branch=master)](https://travis-ci.org/jjn1056/Plack-App-GraphQL)
