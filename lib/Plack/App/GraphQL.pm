@@ -8,7 +8,7 @@ use Moo;
 
 extends 'Plack::Component';
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 has convert => (
   is => 'ro',
@@ -38,7 +38,7 @@ has schema => (
   builder => '_build_schema',
   coerce => sub {
     my $schema_proto = shift;
-    return (ref($schema_proto) =~m/GraphQL::Schema/) ?
+    return (  ref($schema_proto) =~m/GraphQL::Schema/) ?
       $schema_proto :
       coerce_schema($schema_proto);
   }
@@ -267,10 +267,11 @@ sub prepare_results {
   my ($self, $req) = @_;
   my $data = $self->prepare_body($req);
   my $context = $self->prepare_context($req, $data);
+  my $root_value = $self->prepare_root_value($context);
   my $results = $self->execute(
     $self->schema,
     $data,
-    $self->root_value,
+    $root_value,
     $context,
     $self->resolver,
     $self->promise_code,
@@ -304,6 +305,11 @@ sub build_context {
   );
 }
 
+sub prepare_root_value {
+  my ($self, $context) = @_;
+  return my $context->req->env->{'plack.graphql.root_value'} ||= $self->root_value;
+}
+
 sub execute {
   my ($self, $schema, $data, $root_value, $context, $resolver, $promise_code) = @_;
   return my $results = GraphQL::Execution::execute(
@@ -330,9 +336,8 @@ Plack::App::GraphQL - Serve GraphQL from Plack / PSGI
 https://travis-ci.org/jjn1056/Plack-App-GraphQL
 
 # PROJECT STATUS
-| OS      |  Build status |
-|:-------:|--------------:|
-| Linux   | [![Build Status](https://travis-ci.org/jjn1056/Plack-App-GraphQL.svg?branch=master)](https://travis-ci.org/jjn1056/Plack-App-GraphQL) |
+
+[![Build Status](https://travis-ci.org/jjn1056/Plack-App-GraphQL.svg?branch=master)](https://travis-ci.org/jjn1056/Plack-App-GraphQL)
 [![CPAN version](https://badge.fury.io/pl/Plack-App-GraphQL.svg)](https://metacpan.org/pod/Plack-App-GraphQL) 
 
 =end markdown
