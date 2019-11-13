@@ -8,7 +8,7 @@ use Moo;
 
 extends 'Plack::Component';
 
-our $VERSION = '0.002';
+our $VERSION = '0.003';
 
 has convert => (
   is => 'ro',
