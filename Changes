@@ -1,5 +1,9 @@
 # This file documents the revision history for Perl extension Plack-App-GraphQL
 
+0.003 - 13 November 2019
+  - Fix missed prereq: https://github.com/jjn1056/Plack-App-GraphQL/pull/1
+  - Control the iqueryml version: https://github.com/jjn1056/Plack-App-GraphQL/pull/3
+
 0.002 - 17 June 2019
   - Some updates to project metadata (travisCI, Changes, README)
   - Allow you to override the default root_value during request by setting
