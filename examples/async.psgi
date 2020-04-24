@@ -1,5 +1,5 @@
 use Plack::App::GraphQL;
-use Future;
+use Future 0.45;
 use Safe::Isa;
 
 my $schema = q|
@@ -16,13 +16,6 @@ my %root_value = (
 );
 
 my $promise_code = +{
-  then => sub {
-    my ($future, $code) = @_;
-    return $future->then(sub {
-      my @normalized_results = $code->(@_);
-      return Future->wrap(@normalized_results);
-    });
-  },
   all => sub {
     my @futures = map {
       my $future = $_->$_can('then') ? $_ : Future->done($_);
