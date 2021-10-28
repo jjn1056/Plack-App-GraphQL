@@ -109,6 +109,18 @@ L<Plack::App::GraphQL>
 
 __DATA__
 
+<!--
+Copied from https://github.com/graphql/express-graphql/blob/master/src/renderGraphiQL.js
+Converted to use the simple template to capture the CGI args
+Added the apollo-link-ws stuff, marked with "ADDED"
+-->
+<!--
+The request to this GraphQL server provided the header "Accept: text/html"
+and as a result has been presented GraphiQL - an in-browser IDE for
+exploring GraphQL.
+If you wish to receive JSON, provide the header "Accept: application/json" or
+add "&raw" to the end of the URL within a browser.
+-->
 <!DOCTYPE html>
 <html>
 <head>
@@ -125,12 +137,12 @@ __DATA__
   </style>
   <link href="//cdn.jsdelivr.net/npm/graphiql@[% graphiql_version %]/graphiql.css" rel="stylesheet" />
   <script src="//cdn.jsdelivr.net/fetch/0.9.0/fetch.min.js"></script>
-  <script src="//cdn.jsdelivr.net/react/15.4.2/react.min.js"></script>
-  <script src="//cdn.jsdelivr.net/react/15.4.2/react-dom.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react@16/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@16/umd/react-dom.production.min.js"></script>
   <script src="//cdn.jsdelivr.net/npm/graphiql@[% graphiql_version %]/graphiql.min.js"></script>
 </head>
 <body>
-  <script>
+  <script type="module">
     // Collect the URL parameters
     var parameters = {};
     window.location.search.substr(1).split('&').forEach(function (entry) {
@@ -199,10 +211,11 @@ __DATA__
     function updateURL() {
       history.replaceState(null, null, locationQuery(parameters));
     }
+    let myCustomFetcher = graphQLFetcher;
     // Render <GraphiQL /> into the body.
     ReactDOM.render(
       React.createElement(GraphiQL, {
-        fetcher: graphQLFetcher,
+        fetcher: myCustomFetcher, // ADDED changed from graphQLFetcher
         onEditQuery: onEditQuery,
         onEditVariables: onEditVariables,
         onEditOperationName: onEditOperationName,
@@ -216,4 +229,3 @@ __DATA__
   </script>
 </body>
 </html>
-
